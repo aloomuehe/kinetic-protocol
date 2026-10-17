@@ -1,0 +1,255 @@
+@keyframes kpPageEnter {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 6px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes kpSubviewEnter {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 4px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes kpCardEntrance {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 8px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes kpBackdropIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes kpBackdropOut {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@keyframes kpModalIn {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 8px, 0) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes kpModalOut {
+  from {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translate3d(0, 6px, 0) scale(0.97);
+  }
+}
+
+@keyframes kpToastIn {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 10px, 0) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes kpToastOut {
+  from {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translate3d(0, 8px, 0) scale(0.98);
+  }
+}
+
+@keyframes kpBannerIn {
+  from {
+    opacity: 0;
+    transform: translate3d(0, -6px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes kpBannerOut {
+  from {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    opacity: 0;
+    transform: translate3d(0, -6px, 0);
+  }
+}
+
+@keyframes kpBadgeBump {
+  0% { transform: scale(1); }
+  45% { transform: scale(1.16); }
+  100% { transform: scale(1); }
+}
+
+@keyframes kpCheckPop {
+  0% { transform: scale(0.72) rotate(-10deg); }
+  60% { transform: scale(1.14) rotate(2deg); }
+  100% { transform: scale(1) rotate(0deg); }
+}
+
+@keyframes kpRippleWave {
+  0% {
+    transform: translate(-50%, -50%) scale(0.15);
+    opacity: 0.75;
+  }
+  70% {
+    opacity: 0.35;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(2.75);
+    opacity: 0;
+  }
+}
+
+@keyframes kpRippleOuterRing {
+  0% {
+    transform: scale(0.92);
+    opacity: 0.85;
+    box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.55);
+  }
+  100% {
+    transform: scale(1.55);
+    opacity: 0;
+    box-shadow: 0 0 0 10px rgba(52, 211, 153, 0);
+  }
+}
+
+@keyframes kpStreakFire {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.26) translateY(-2px); filter: drop-shadow(0 0 8px rgba(251, 191, 36, 0.65)); }
+  100% { transform: scale(1) translateY(0); filter: drop-shadow(0 0 0px rgba(251, 191, 36, 0)); }
+}
+
+.kp-ripple-wave {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 100%;
+  height: 100%;
+  border-radius: 9999px;
+  background: radial-gradient(circle, rgba(255,255,255,0.7) 0%, rgba(52,211,153,0.45) 55%, transparent 75%);
+  pointer-events: none;
+  animation: kpRippleWave 520ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.kp-ripple-ring {
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  border: 2px solid rgba(52, 211, 153, 0.75);
+  pointer-events: none;
+  animation: kpRippleOuterRing 520ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.kp-streak-fire {
+  animation: kpStreakFire 420ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.kp-page-transition {
+  animation: kpPageEnter var(--kp-dur-page) var(--kp-ease-out) both;
+}
+
+.kp-subview-transition {
+  animation: kpSubviewEnter var(--kp-dur-menu) var(--kp-ease-out) both;
+}
+
+.kp-stagger-1 {
+  animation: kpCardEntrance var(--kp-dur-entrance) var(--kp-ease-out) 0ms both;
+}
+.kp-stagger-2 {
+  animation: kpCardEntrance var(--kp-dur-entrance) var(--kp-ease-out) 40ms both;
+}
+.kp-stagger-3 {
+  animation: kpCardEntrance var(--kp-dur-entrance) var(--kp-ease-out) 80ms both;
+}
+.kp-stagger-4 {
+  animation: kpCardEntrance var(--kp-dur-entrance) var(--kp-ease-out) 120ms both;
+}
+
+.kp-card {
+  transition:
+    transform var(--kp-dur-hover) var(--kp-ease-out),
+    border-color var(--kp-dur-hover) var(--kp-ease-out),
+    background-color var(--kp-dur-hover) var(--kp-ease-out),
+    box-shadow var(--kp-dur-hover) var(--kp-ease-out);
+}
+.kp-card-interactive:hover {
+  transform: translate3d(0, -1.5px, 0);
+  border-color: rgba(129, 140, 248, 0.32);
+}
+
+.kp-btn {
+  transition:
+    transform var(--kp-dur-micro) var(--kp-ease-out),
+    background-color var(--kp-dur-hover) var(--kp-ease-out),
+    border-color var(--kp-dur-hover) var(--kp-ease-out),
+    color var(--kp-dur-hover) var(--kp-ease-out),
+    box-shadow var(--kp-dur-hover) var(--kp-ease-out),
+    opacity var(--kp-dur-micro) var(--kp-ease-out);
+}
+.kp-btn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.kp-backdrop-enter {
+  animation: kpBackdropIn var(--kp-dur-modal) var(--kp-ease-out) forwards;
+}
+.kp-backdrop-exit {
+  animation: kpBackdropOut 200ms var(--kp-ease-in) forwards;
+}
+.kp-modal-enter {
+  animation: kpModalIn var(--kp-dur-modal) var(--kp-ease-out) forwards;
+}
+.kp-modal-exit {
+  animation: kpModalOut 200ms var(--kp-ease-in) forwards;
+}
+.kp-toast-enter {
+  animation: kpToastIn var(--kp-dur-menu) var(--kp-ease-out) forwards;
+}
+.kp-toast-exit {
+  animation: kpToastOut 180ms var(--kp-ease-in) forwards;
+}
+.kp-banner-enter {
+  animation: kpBannerIn var(--kp-dur-menu) var(--kp-ease-out) forwards;
+}
+.kp-banner-exit {
+  animation: kpBannerOut 170ms var(--kp-ease-in) forwards;
+}
+.kp-badge-bump {
+  animation: kpBadgeBump 220ms var(--kp-ease-out);
+}
+.kp-check-pop {
+  animation: kpCheckPop 170ms var(--kp-ease-out);
+}

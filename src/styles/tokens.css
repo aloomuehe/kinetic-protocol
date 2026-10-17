@@ -1,0 +1,11 @@
+:root {
+  --kp-dur-micro: 150ms;
+  --kp-dur-hover: 185ms;
+  --kp-dur-menu: 210ms;
+  --kp-dur-page: 250ms;
+  --kp-dur-modal: 240ms;
+  --kp-dur-entrance: 380ms;
+  --kp-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --kp-ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --kp-ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+}
