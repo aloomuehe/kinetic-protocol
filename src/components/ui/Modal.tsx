@@ -12,7 +12,7 @@ import type {
 } from '../../store/types';
 import { CATEGORIES } from '../../store/constants';
 import { formatFileSize, parseMinutes } from '../../utils/formatting';
-import { addDaysISO } from '../../utils/dates';
+import { addDaysISO, toLocalISO } from '../../utils/dates';
 import { idbSavePdfBlob } from '../../services/indexedDB';
 
 interface ModalProps {
@@ -190,23 +190,29 @@ export function Modal({
               const startTime = String(fd.get('startTime') || '09:00');
               const endTime = String(fd.get('endTime') || '10:30');
               const plannedMinutes = Math.max(15, parseMinutes(endTime) - parseMinutes(startTime));
+              const submittedDate = String(fd.get('date') || '').trim();
+              const blockDate = submittedDate ? toLocalISO(submittedDate) : (editingRecord?.date || selectedDateISO);
               const newBlock: ScheduleBlock = {
                 id: editingRecord?.id || `sch-${Date.now()}`,
                 title,
-                date: selectedDateISO,
+                date: blockDate,
                 startTime,
                 endTime,
                 plannedMinutes,
-                actualMinutes: 0,
+                actualMinutes: editingRecord?.actualMinutes ?? 0,
                 category,
-                recurrence: String(fd.get('recurrence') || 'none'),
-                completed: false,
-                notes: String(fd.get('description') || '')
+                linkedGoalId: editingRecord?.linkedGoalId ?? null,
+                linkedTaskId: editingRecord?.linkedTaskId ?? null,
+                recurrence: String(fd.get('recurrence') || editingRecord?.recurrence || 'none'),
+                completed: editingRecord?.completed ?? false,
+                notes: String(fd.get('description') || editingRecord?.notes || '')
               };
               onSaveStore((prev) => ({
                 ...prev,
                 isStarterWorkspace: false,
-                schedules: [newBlock, ...(prev.schedules || [])]
+                schedules: editingRecord
+                  ? (prev.schedules || []).map((s) => (s.id === editingRecord.id ? newBlock : s))
+                  : [newBlock, ...(prev.schedules || [])]
               }));
             } else if (activeModal === 'habit') {
               const trackingType = String(fd.get('trackingType') || editingRecord?.trackingType || 'binary');
@@ -233,7 +239,7 @@ export function Modal({
                   weekdays: [0, 1, 2, 3, 4, 5, 6],
                   weeklyTarget: 7
                 },
-                startDate: editingRecord?.startDate || addDaysISO(todayISO, -14),
+                startDate: editingRecord?.startDate || todayISO,
                 archivedAt: null
               };
               onSaveStore((prev) => ({
@@ -326,6 +332,18 @@ export function Modal({
               ))}
             </select>
           </div>
+
+          {activeModal === 'schedule' && (
+            <div>
+              <label className="block font-bold text-slate-300 mb-1">Date</label>
+              <input
+                type="date"
+                name="date"
+                defaultValue={editingRecord?.date || selectedDateISO}
+                className="w-full rounded-xl border border-white/10 bg-[#151926] px-3 py-2 text-white transition focus:border-indigo-500 focus:outline-none"
+              />
+            </div>
+          )}
 
           {(activeModal === 'task' || activeModal === 'schedule') && (
             <div className="grid grid-cols-2 gap-2">

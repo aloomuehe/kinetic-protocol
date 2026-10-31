@@ -47,4 +47,49 @@ describe('Date Utilities (Local ISO)', () => {
     const formatted = formatReadableDate('2026-10-17');
     expect(formatted).toContain('Oct 17, 2026');
   });
+
+  it('safely preserves date-only ISO strings without UTC midnight shifts', () => {
+    expect(toLocalISO('2026-10-17')).toBe('2026-10-17');
+    expect(toLocalISO(' 2026-10-31 ')).toBe('2026-10-31');
+  });
+
+  describe('Date Validation Matrix', () => {
+    const today = toLocalISO(new Date());
+
+    it('validates ordinary valid dates', () => {
+      expect(toLocalISO('2026-10-17')).toBe('2026-10-17');
+      expect(toLocalISO('2025-01-01')).toBe('2025-01-01');
+    });
+
+    it('validates leap date in a leap year', () => {
+      expect(toLocalISO('2024-02-29')).toBe('2024-02-29');
+    });
+
+    it('rejects invalid leap date in a non-leap year and falls back safely', () => {
+      expect(toLocalISO('2023-02-29')).toBe(today);
+    });
+
+    it('rejects invalid day, month, and year values', () => {
+      expect(toLocalISO('2026-04-31')).toBe(today); // April has 30 days
+      expect(toLocalISO('2026-13-10')).toBe(today); // Invalid month 13
+      expect(toLocalISO('2026-00-10')).toBe(today); // Invalid month 00
+      expect(toLocalISO('2026-05-32')).toBe(today); // Invalid day 32
+      expect(toLocalISO('0999-01-01')).toBe(today); // Year < 1000
+    });
+
+    it('handles whitespace around valid date-only strings', () => {
+      expect(toLocalISO('   2026-10-31   ')).toBe('2026-10-31');
+    });
+
+    it('handles ISO timestamp strings with local date conversion', () => {
+      const parsed = toLocalISO('2026-10-17T12:00:00Z');
+      expect(parsed).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    });
+
+    it('handles malformed and non-date strings gracefully', () => {
+      expect(toLocalISO('not-a-date')).toBe(today);
+      expect(toLocalISO('')).toBe(today);
+      expect(toLocalISO('abcd-ef-gh')).toBe(today);
+    });
+  });
 });

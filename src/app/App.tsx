@@ -21,7 +21,7 @@ import {
   computeHabitStatsById,
   computeWeeklyMetrics
 } from '../store/selectors';
-import { isEntrySatisfied } from '../features/habits/habitCalculations';
+import { isEntrySatisfied, isHabitScheduledOnDate } from '../features/habits/habitCalculations';
 import { useReducedMotion } from '../hooks/useReducedMotion';
 
 import { Sidebar } from '../components/layout/Sidebar';
@@ -44,8 +44,40 @@ import { SettingsView } from '../features/settings/SettingsView';
 import { BackupView } from '../features/backup/BackupView';
 
 export default function App() {
-  const todayISO = useMemo(() => toLocalISO(new Date()), []);
+  const [todayISO, setTodayISO] = useState<string>(() => toLocalISO(new Date()));
   const [store, setStore] = useState<KineticStore>(() => loadAndMigrateStore(todayISO));
+
+  // Check for local calendar date rollover periodically and on window focus / visibility change
+  useEffect(() => {
+    const checkDate = () => {
+      const current = toLocalISO(new Date());
+      setTodayISO((prevToday) => {
+        if (prevToday !== current) {
+          setSelectedDateISO((prevSelected) =>
+            prevSelected === prevToday ? current : prevSelected
+          );
+          return current;
+        }
+        return prevToday;
+      });
+    };
+
+    const interval = setInterval(checkDate, 60000);
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        checkDate();
+      }
+    };
+    window.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', checkDate);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', checkDate);
+    };
+  }, []);
   const [activeNav, setActiveNav] = useState<ActiveNavId>('overview');
   const [selectedDateISO, setSelectedDateISO] = useState<string>(todayISO);
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(false);
@@ -233,7 +265,7 @@ export default function App() {
   );
 
   const todayScheduledHabits = useMemo(
-    () => activeHabits.filter((h) => h.startDate <= selectedDateISO),
+    () => activeHabits.filter((h) => isHabitScheduledOnDate(h, selectedDateISO)),
     [activeHabits, selectedDateISO]
   );
 
@@ -812,6 +844,7 @@ export default function App() {
                   statsHoverIdx={statsHoverIdx}
                   hoveredAllocationCat={hoveredAllocationCat}
                   weeklyMetrics={weeklyMetrics}
+                  habitStatsById={habitStatsById}
                   onSetStatsTimeframe={setStatsTimeframe}
                   onSetStatsSeriesFilter={setStatsSeriesFilter}
                   onSetStatsHoverIdx={setStatsHoverIdx}

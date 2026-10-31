@@ -80,4 +80,149 @@ describe('Habit Calculations & Streak Logic', () => {
     const stats = computeHabitStats(weekdayHabit, entriesMap, todayISO);
     expect(stats.currentStreak).toBe(3); // 3 scheduled days satisfied with weekend rest preserved
   });
+
+  it('preserves yesterday active streak when today check-in is pending', () => {
+    const todayISO = '2026-10-17';
+    const entriesMap: Record<string, Record<string, HabitEntry>> = {
+      [dailyHabit.id]: {
+        '2026-10-15': { id: 'e1', habitId: dailyHabit.id, date: '2026-10-15', value: 60, status: 'completed' },
+        '2026-10-16': { id: 'e2', habitId: dailyHabit.id, date: '2026-10-16', value: 60, status: 'completed' }
+        // 2026-10-17 is unchecked/pending
+      }
+    };
+
+    const stats = computeHabitStats(dailyHabit, entriesMap, todayISO);
+    expect(stats.todayDone).toBe(false);
+    expect(stats.currentStreak).toBe(2); // Preserves Oct 15 & 16
+  });
+
+  it('does not destroy historical streak when future date is pre-checked and today is pending', () => {
+    const todayISO = '2026-10-17';
+    const entriesMap: Record<string, Record<string, HabitEntry>> = {
+      [dailyHabit.id]: {
+        '2026-10-14': { id: 'e1', habitId: dailyHabit.id, date: '2026-10-14', value: 60, status: 'completed' },
+        '2026-10-15': { id: 'e2', habitId: dailyHabit.id, date: '2026-10-15', value: 60, status: 'completed' },
+        '2026-10-16': { id: 'e3', habitId: dailyHabit.id, date: '2026-10-16', value: 60, status: 'completed' },
+        // Today Oct 17 is pending
+        // Tomorrow Oct 18 is checked early
+        '2026-10-18': { id: 'e4', habitId: dailyHabit.id, date: '2026-10-18', value: 60, status: 'completed' }
+      }
+    };
+
+    const stats = computeHabitStats(dailyHabit, entriesMap, todayISO);
+    expect(stats.currentStreak).toBe(3); // Oct 14-16 is strictly preserved!
+  });
+
+  it('breaks streak when a scheduled day in the past is missed', () => {
+    const todayISO = '2026-10-17';
+    const entriesMap: Record<string, Record<string, HabitEntry>> = {
+      [dailyHabit.id]: {
+        '2026-10-14': { id: 'e1', habitId: dailyHabit.id, date: '2026-10-14', value: 60, status: 'completed' },
+        // Oct 15 is missed
+        '2026-10-16': { id: 'e2', habitId: dailyHabit.id, date: '2026-10-16', value: 60, status: 'completed' },
+        '2026-10-17': { id: 'e3', habitId: dailyHabit.id, date: '2026-10-17', value: 60, status: 'completed' }
+      }
+    };
+
+    const stats = computeHabitStats(dailyHabit, entriesMap, todayISO);
+    expect(stats.currentStreak).toBe(2); // Only Oct 16 & 17
+    expect(stats.longestStreak).toBe(2);
+  });
+
+  describe('Habit Statistics Robustness Matrix', () => {
+    it('ensures future completed entries do not inflate historical streaks or completion rates', () => {
+      const todayISO = '2026-10-17';
+      const habit: Habit = {
+        id: 'hab-test',
+        title: 'Daily Protocol',
+        description: 'Test protocol',
+        category: 'Code',
+        trackingType: 'duration',
+        targetValue: 60,
+        minViableValue: 30,
+        unit: 'min',
+        schedule: { type: 'daily', weekdays: [0, 1, 2, 3, 4, 5, 6], weeklyTarget: 7 },
+        startDate: '2026-10-15',
+        archivedAt: null
+      };
+
+      const entriesMap: Record<string, Record<string, HabitEntry>> = {
+        [habit.id]: {
+          '2026-10-15': { id: 'e1', habitId: habit.id, date: '2026-10-15', value: 60, status: 'completed' },
+          '2026-10-16': { id: 'e2', habitId: habit.id, date: '2026-10-16', value: 60, status: 'completed' },
+          '2026-10-17': { id: 'e3', habitId: habit.id, date: '2026-10-17', value: 60, status: 'completed' },
+          // Future entries pre-checked:
+          '2026-10-18': { id: 'e4', habitId: habit.id, date: '2026-10-18', value: 60, status: 'completed' },
+          '2026-10-19': { id: 'e5', habitId: habit.id, date: '2026-10-19', value: 60, status: 'completed' }
+        }
+      };
+
+      const stats = computeHabitStats(habit, entriesMap, todayISO);
+      // Current active streak is strictly evaluated up to today (Oct 15, 16, 17 = 3 days)
+      expect(stats.currentStreak).toBe(3);
+      // Longest streak up to today is 3 (not 5)
+      expect(stats.longestStreak).toBe(3);
+      // Completion rate is evaluated up to today (3/3 = 100%)
+      expect(stats.completionRate).toBe(100);
+    });
+
+    it('handles Minimum Viable Day (MVD) check-ins as fully satisfied for streak continuation', () => {
+      const todayISO = '2026-10-17';
+      const habit: Habit = {
+        id: 'hab-mvd',
+        title: 'MVD Capable Habit',
+        description: 'MVD protocol',
+        category: 'Math',
+        trackingType: 'duration',
+        targetValue: 60,
+        minViableValue: 15,
+        unit: 'min',
+        schedule: { type: 'daily', weekdays: [0, 1, 2, 3, 4, 5, 6], weeklyTarget: 7 },
+        startDate: '2026-10-15',
+        archivedAt: null
+      };
+
+      const entriesMap: Record<string, Record<string, HabitEntry>> = {
+        [habit.id]: {
+          '2026-10-15': { id: 'e1', habitId: habit.id, date: '2026-10-15', value: 60, status: 'completed' },
+          '2026-10-16': { id: 'e2', habitId: habit.id, date: '2026-10-16', value: 15, status: 'mvd' },
+          '2026-10-17': { id: 'e3', habitId: habit.id, date: '2026-10-17', value: 20, status: 'mvd' }
+        }
+      };
+
+      const stats = computeHabitStats(habit, entriesMap, todayISO);
+      expect(stats.todayDone).toBe(true);
+      expect(stats.currentStreak).toBe(3);
+      expect(stats.completionRate).toBe(100);
+    });
+
+    it('bridges over rest days without breaking current active streak', () => {
+      const todayISO = '2026-10-19'; // Monday
+      const weekdayOnlyHabit: Habit = {
+        id: 'hab-wkday',
+        title: 'Weekday Habit',
+        description: 'Weekday protocol',
+        category: 'Code',
+        trackingType: 'binary',
+        targetValue: 1,
+        minViableValue: 1,
+        unit: 'check',
+        schedule: { type: 'weekdays', weekdays: [0, 1, 2, 3, 4], weeklyTarget: 5 }, // Mon-Fri
+        startDate: '2026-10-15',
+        archivedAt: null
+      };
+
+      const entriesMap: Record<string, Record<string, HabitEntry>> = {
+        [weekdayOnlyHabit.id]: {
+          '2026-10-15': { id: 'e1', habitId: weekdayOnlyHabit.id, date: '2026-10-15', value: 1, status: 'completed' }, // Thu
+          '2026-10-16': { id: 'e2', habitId: weekdayOnlyHabit.id, date: '2026-10-16', value: 1, status: 'completed' }, // Fri
+          // 2026-10-17 (Sat) & 2026-10-18 (Sun) are unscheduled rest days
+          '2026-10-19': { id: 'e3', habitId: weekdayOnlyHabit.id, date: '2026-10-19', value: 1, status: 'completed' }  // Mon
+        }
+      };
+
+      const stats = computeHabitStats(weekdayOnlyHabit, entriesMap, todayISO);
+      expect(stats.currentStreak).toBe(3); // Thu, Fri, Mon satisfied; Sat/Sun rest skipped without penalty
+    });
+  });
 });

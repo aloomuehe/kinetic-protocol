@@ -1,6 +1,6 @@
 import React from 'react';
 import { ArrowUpRight, PieChart, Flame, Calendar as CalendarIcon } from 'lucide-react';
-import type { KineticStore, ActiveNavId } from '../../store/types';
+import type { KineticStore, ActiveNavId, HabitStats } from '../../store/types';
 import type { WeeklyMetrics } from '../../store/selectors';
 import { formatDurationMinutes } from '../../utils/formatting';
 import { computeTelemetryAnalytics } from './analytics';
@@ -14,6 +14,7 @@ interface StatisticsViewProps {
   statsHoverIdx: number | null;
   hoveredAllocationCat: string | null;
   weeklyMetrics: WeeklyMetrics;
+  habitStatsById?: Record<string, HabitStats>;
   onSetStatsTimeframe: (tf: 'daily' | 'weekly' | 'monthly' | ((prev: 'daily' | 'weekly' | 'monthly') => 'daily' | 'weekly' | 'monthly')) => void;
   onSetStatsSeriesFilter: (filter: 'all' | 'planned' | 'actual' | 'velocity' | ((prev: 'all' | 'planned' | 'actual' | 'velocity') => 'all' | 'planned' | 'actual' | 'velocity')) => void;
   onSetStatsHoverIdx: (idx: number | null) => void;
@@ -30,6 +31,7 @@ export function StatisticsView({
   statsHoverIdx,
   hoveredAllocationCat,
   weeklyMetrics,
+  habitStatsById,
   onSetStatsTimeframe,
   onSetStatsSeriesFilter,
   onSetStatsHoverIdx,
@@ -40,7 +42,8 @@ export function StatisticsView({
     store,
     selectedDateISO,
     todayISO,
-    statsTimeframe
+    statsTimeframe,
+    habitStatsById
   );
 
   const {

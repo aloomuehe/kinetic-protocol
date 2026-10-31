@@ -5,7 +5,8 @@ import { CATEGORIES } from '../../store/constants';
 import { parseLocalISO } from '../../utils/dates';
 import { CircularRing } from '../../components/ui/CircularRing';
 import { HabitRow } from './components/HabitRow';
-import { isEntrySatisfied } from './habitCalculations';
+import { isEntrySatisfied, isHabitScheduledOnDate } from './habitCalculations';
+import { computeProtocolConsistency } from '../../store/selectors';
 
 interface HabitsViewProps {
   store: KineticStore;
@@ -54,14 +55,11 @@ export function HabitsView({
     (maxS, h) => Math.max(maxS, habitStatsById[h.id]?.currentStreak || 0),
     0
   );
-  const avgHabitRate =
-    activeHabits.length > 0
-      ? Math.round(
-          activeHabits.reduce((acc, h) => acc + (habitStatsById[h.id]?.completionRate || 0), 0) /
-            activeHabits.length
-        )
-      : 0;
-  const todayDoneTotal = activeHabits.filter((h) =>
+  const avgHabitRate = computeProtocolConsistency(activeHabits, habitStatsById);
+  const scheduledHabitsToday = activeHabits.filter((h) =>
+    isHabitScheduledOnDate(h, todayISO)
+  );
+  const todayDoneTotal = scheduledHabitsToday.filter((h) =>
     isEntrySatisfied(h, store.habitEntries?.[h.id]?.[todayISO])
   ).length;
 
@@ -107,15 +105,19 @@ export function HabitsView({
               Today&apos;s Check-Ins ({todayISO.slice(5)})
             </div>
             <div className="mt-1 text-2xl font-extrabold text-emerald-400">
-              {todayDoneTotal}/{activeHabits.length}
+              {scheduledHabitsToday.length > 0 ? (
+                `${todayDoneTotal}/${scheduledHabitsToday.length}`
+              ) : (
+                <span className="text-slate-500 text-lg">Rest Day</span>
+              )}
             </div>
             <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-white/[0.06]">
               <div
                 className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-teal-400 transition-all duration-300"
                 style={{
                   width: `${
-                    activeHabits.length > 0
-                      ? Math.round((todayDoneTotal / activeHabits.length) * 100)
+                    scheduledHabitsToday.length > 0
+                      ? Math.round((todayDoneTotal / scheduledHabitsToday.length) * 100)
                       : 0
                   }%`
                 }}
@@ -124,8 +126,8 @@ export function HabitsView({
           </div>
           <CircularRing
             percent={
-              activeHabits.length > 0
-                ? Math.round((todayDoneTotal / activeHabits.length) * 100)
+              scheduledHabitsToday.length > 0
+                ? Math.round((todayDoneTotal / scheduledHabitsToday.length) * 100)
                 : 0
             }
             color="#34d399"

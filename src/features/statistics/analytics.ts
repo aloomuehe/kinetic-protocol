@@ -1,4 +1,4 @@
-import type { KineticStore } from '../../store/types';
+import type { KineticStore, HabitStats } from '../../store/types';
 import { CATEGORIES } from '../../store/constants';
 import {
   toLocalISO,
@@ -8,7 +8,7 @@ import {
   getWeekDatesISO
 } from '../../utils/dates';
 import { isHabitScheduledOnDate, isEntrySatisfied } from '../habits/habitCalculations';
-import { getSchedulesForDate } from '../../store/selectors';
+import { getSchedulesForDate, computeHabitStatsById } from '../../store/selectors';
 
 export interface TelemetryPoint {
   id: string;
@@ -20,6 +20,7 @@ export interface TelemetryPoint {
   velocityMins: number;
   efficiencyPct: number;
   habitsSummary: string;
+  sessionsCount?: number;
 }
 
 export interface CategoryAllocationRow {
@@ -45,11 +46,12 @@ export function computeTelemetryAnalytics(
   store: KineticStore,
   selectedDateISO: string,
   todayISO: string,
-  statsTimeframe: 'daily' | 'weekly' | 'monthly'
+  statsTimeframe: 'daily' | 'weekly' | 'monthly',
+  habitStatsById?: Record<string, HabitStats>
 ): TelemetryAnalyticsResult {
   const activeHabits = (store.habits || []).filter((h) => !h.archivedAt);
 
-  const getDayTelemetry = (dISO: string) => {
+  const getDayTelemetry = (dISO: string, isMultiDay: boolean = false) => {
     const blocks = getSchedulesForDate(store.schedules || [], dISO);
     const dayHabits = activeHabits.filter((h) => isHabitScheduledOnDate(h, dISO));
     const doneHabits = dayHabits.filter((h) =>
@@ -58,12 +60,39 @@ export function computeTelemetryAnalytics(
     const dayTasks = (store.tasks || []).filter((t) => t.dueDate === dISO);
     const doneTasks = dayTasks.filter((t) => t.status === 'completed');
 
+    // In multi-day aggregation, exclude ambiguous recurring execution data when dISO !== b.date
+    // to prevent scalar completion fields from multiplying across all matching days.
+    const isBlockVerifiedOnDay = (b: (typeof blocks)[0]) =>
+      !isMultiDay || !b.recurrence || b.recurrence === 'none' || b.date === dISO;
+
+    const isBlockContributingFocus = (b: (typeof blocks)[0]) => {
+      if (!isBlockVerifiedOnDay(b)) return false;
+      return Number(b.actualMinutes) > 0 || (b.completed && dISO <= todayISO);
+    };
+
+    // Deduplicate tasks ONLY when their associated schedule block actually contributes focus time on this date.
+    // An incomplete, untracked schedule block does not suppress an independently completed task.
+    const contributingLinkedTaskIds = new Set(
+      blocks
+        .filter((b) => b.linkedTaskId && isBlockContributingFocus(b))
+        .map((b) => b.linkedTaskId!)
+    );
+    const unlinkedDoneTasks = doneTasks.filter((t) => !contributingLinkedTaskIds.has(t.id));
+
+    // For planned capacity: unlinked planned tasks
+    const allLinkedTaskIdsOnDay = new Set(
+      blocks.filter((b) => b.linkedTaskId).map((b) => b.linkedTaskId!)
+    );
+    const unlinkedDayTasks = dayTasks.filter((t) => !allLinkedTaskIdsOnDay.has(t.id));
+
     let plannedMins = blocks.reduce((acc, b) => acc + (Number(b.plannedMinutes) || 0), 0);
     let actualMins = blocks.reduce(
       (acc, b) =>
         acc +
-        (Number(b.actualMinutes) ||
-          (b.completed && dISO <= todayISO ? Number(b.plannedMinutes) || 0 : 0)),
+        (isBlockVerifiedOnDay(b)
+          ? Number(b.actualMinutes) ||
+            (b.completed && dISO <= todayISO ? Number(b.plannedMinutes) || 0 : 0)
+          : 0),
       0
     );
 
@@ -81,9 +110,9 @@ export function computeTelemetryAnalytics(
       }
     });
 
-    // Add completed task focus contribution
-    actualMins += doneTasks.length * 25;
-    plannedMins += dayTasks.length * 25;
+    // Add unlinked completed task focus contribution
+    actualMins += unlinkedDoneTasks.length * 25;
+    plannedMins += unlinkedDayTasks.length * 25;
 
     const habitRatio =
       dayHabits.length > 0 ? doneHabits.length / dayHabits.length : 0.75;
@@ -97,11 +126,13 @@ export function computeTelemetryAnalytics(
       categoryMins[c] = 0;
     });
     blocks.forEach((b) => {
-      const cat = CATEGORIES[b.category] ? b.category : 'General';
-      const mins =
-        Number(b.actualMinutes) ||
-        (b.completed && dISO <= todayISO ? Number(b.plannedMinutes) || 0 : 0);
-      categoryMins[cat] = (categoryMins[cat] || 0) + mins;
+      if (isBlockContributingFocus(b)) {
+        const cat = CATEGORIES[b.category] ? b.category : 'General';
+        const mins =
+          Number(b.actualMinutes) ||
+          (b.completed && dISO <= todayISO ? Number(b.plannedMinutes) || 0 : 0);
+        categoryMins[cat] = (categoryMins[cat] || 0) + mins;
+      }
     });
     doneHabits.forEach((h) => {
       const cat = CATEGORIES[h.category] ? h.category : 'General';
@@ -110,10 +141,12 @@ export function computeTelemetryAnalytics(
         h.trackingType === 'duration' ? Number(entry?.value) || 45 : 25;
       categoryMins[cat] = (categoryMins[cat] || 0) + mins;
     });
-    doneTasks.forEach((t) => {
+    unlinkedDoneTasks.forEach((t) => {
       const cat = CATEGORIES[t.category] ? t.category : 'General';
       categoryMins[cat] = (categoryMins[cat] || 0) + 25;
     });
+
+    const contributingBlocksCount = blocks.filter((b) => isBlockContributingFocus(b)).length;
 
     return {
       dateISO: dISO,
@@ -126,30 +159,33 @@ export function computeTelemetryAnalytics(
       totalTasksCount: dayTasks.length,
       categoryMins,
       sessionsCount:
-        blocks.filter((b) => b.completed || Number(b.actualMinutes) > 0).length +
+        contributingBlocksCount +
         doneHabits.length +
-        doneTasks.length
+        unlinkedDoneTasks.length
     };
   };
 
   let points: TelemetryPoint[] = [];
   let periodDates: string[] = [];
+  let allocationDates: string[] = [];
   let subtitle = '';
-  let targetCapMins = 1800;
+  const dailyFocusTarget = store.settings?.dailyFocusTargetMinutes || 240;
+  let targetCapMins = dailyFocusTarget;
   let daysLeft = 1;
 
   if (statsTimeframe === 'daily') {
     subtitle = 'Planned capacity vs actual focus & net velocity across past 7 days';
-    targetCapMins = (store.settings?.dailyFocusTargetMinutes || 240) * 7;
+    targetCapMins = dailyFocusTarget;
     periodDates = Array.from({ length: 7 }, (_, i) =>
       addDaysISO(selectedDateISO, -(6 - i))
     );
+    allocationDates = [selectedDateISO];
     const wd = getWeekdayMon0(selectedDateISO);
     daysLeft = Math.max(1, 6 - wd);
 
     points = periodDates.map((dISO, idx) => {
       const dt = parseLocalISO(dISO);
-      const dayStats = getDayTelemetry(dISO);
+      const dayStats = getDayTelemetry(dISO, true);
       const shortLabel = dt.toLocaleDateString('en-US', { weekday: 'short' });
       const fullLabel = dt.toLocaleDateString('en-US', {
         weekday: 'short',
@@ -169,12 +205,13 @@ export function computeTelemetryAnalytics(
         actualMins: dayStats.actualMins,
         velocityMins: dayStats.velocityMins,
         efficiencyPct: effPct,
-        habitsSummary: `${dayStats.doneHabitsCount}/${dayStats.totalHabitsCount} habits`
+        habitsSummary: `${dayStats.doneHabitsCount}/${dayStats.totalHabitsCount} habits`,
+        sessionsCount: dayStats.sessionsCount
       };
     });
   } else if (statsTimeframe === 'weekly') {
     subtitle = 'Planned capacity vs actual focus & net velocity across past 6 weeks';
-    targetCapMins = (store.settings?.dailyFocusTargetMinutes || 240) * 7;
+    targetCapMins = dailyFocusTarget * 7;
     const currentWeekDates = getWeekDatesISO(
       selectedDateISO,
       store.settings?.weekStartsOnMonday ?? true
@@ -184,6 +221,7 @@ export function computeTelemetryAnalytics(
     daysLeft = Math.max(1, 7 - wd);
 
     periodDates = currentWeekDates;
+    allocationDates = currentWeekDates;
 
     points = Array.from({ length: 6 }, (_, idx) => {
       const weeksBack = 5 - idx;
@@ -210,7 +248,7 @@ export function computeTelemetryAnalytics(
       let habitTotalSum = 0;
 
       wkDays.forEach((d) => {
-        const s = getDayTelemetry(d);
+        const s = getDayTelemetry(d, true);
         plannedSum += s.plannedMins;
         actualSum += s.actualMins;
         velocitySum += s.velocityMins;
@@ -241,12 +279,13 @@ export function computeTelemetryAnalytics(
     const curMonth = selDt.getMonth();
     const daysInCurMonth = new Date(curYear, curMonth + 1, 0).getDate();
     daysLeft = Math.max(1, daysInCurMonth - selDt.getDate());
-    targetCapMins = (store.settings?.dailyFocusTargetMinutes || 240) * 30;
+    targetCapMins = dailyFocusTarget * daysInCurMonth;
 
     const startOfCurrentMonthISO = `${selectedDateISO.slice(0, 8)}01`;
     periodDates = Array.from({ length: daysInCurMonth }, (_, i) =>
       addDaysISO(startOfCurrentMonthISO, i)
     );
+    allocationDates = periodDates;
 
     points = Array.from({ length: 6 }, (_, idx) => {
       const monthsBack = 5 - idx;
@@ -264,7 +303,7 @@ export function computeTelemetryAnalytics(
 
       for (let d = 0; d < numDays; d++) {
         const dISO = addDaysISO(startISO, d);
-        const s = getDayTelemetry(dISO);
+        const s = getDayTelemetry(dISO, true);
         plannedSum += s.plannedMins;
         actualSum += s.actualMins;
         velocitySum += s.velocityMins;
@@ -291,7 +330,7 @@ export function computeTelemetryAnalytics(
     });
   }
 
-  // Aggregate Category Allocations across the selected period
+  // Aggregate Category Allocations across the selected timeframe allocation dates
   const totalCatMins: Record<string, number> = {};
   const totalCatCounts: Record<string, number> = {};
   Object.keys(CATEGORIES).forEach((c) => {
@@ -299,8 +338,9 @@ export function computeTelemetryAnalytics(
     totalCatCounts[c] = 0;
   });
 
-  periodDates.forEach((dISO) => {
-    const s = getDayTelemetry(dISO);
+  const isMultiDayTimeframe = statsTimeframe !== 'daily';
+  allocationDates.forEach((dISO) => {
+    const s = getDayTelemetry(dISO, isMultiDayTimeframe);
     Object.entries(s.categoryMins).forEach(([cat, mins]) => {
       totalCatMins[cat] = (totalCatMins[cat] || 0) + mins;
       if (mins > 0) totalCatCounts[cat] = (totalCatCounts[cat] || 0) + 1;
@@ -309,7 +349,7 @@ export function computeTelemetryAnalytics(
 
   const totalAllocatedMins = Object.values(totalCatMins).reduce((a, b) => a + b, 0);
 
-  const allocationRows: CategoryAllocationRow[] = Object.entries(totalCatMins)
+  const rawRows = Object.entries(totalCatMins)
     .map(([category, minutes]) => {
       const pct =
         totalAllocatedMins > 0 ? Math.round((minutes / totalAllocatedMins) * 100) : 0;
@@ -324,13 +364,27 @@ export function computeTelemetryAnalytics(
     })
     .sort((a, b) => b.minutes - a.minutes);
 
+  // Ensure display integer percentages sum to exactly 100% when totalAllocatedMins > 0
+  if (totalAllocatedMins > 0 && rawRows.length > 0) {
+    const currentSum = rawRows.reduce((acc, r) => acc + r.pct, 0);
+    const diff = 100 - currentSum;
+    if (diff !== 0 && rawRows[0].minutes > 0) {
+      rawRows[0].pct += diff;
+    }
+  }
+
+  const allocationRows: CategoryAllocationRow[] = rawRows;
+
   const topCategoryRow = allocationRows.length > 0 && allocationRows[0].minutes > 0 ? allocationRows[0] : null;
   const capPct = targetCapMins > 0 ? Math.min(100, Math.round((totalAllocatedMins / targetCapMins) * 100)) : 0;
 
-  // Max streak among active habits
+  // Max streak among active habits (synchronized with HabitsView Top Active Streak)
+  const habitStatsMap =
+    habitStatsById ||
+    computeHabitStatsById(store.habits || [], store.habitEntries || {}, todayISO);
   const maxStreak = activeHabits.reduce((acc, h) => {
-    return Math.max(acc, h.schedule?.weeklyTarget || 5);
-  }, 5);
+    return Math.max(acc, habitStatsMap[h.id]?.currentStreak || 0);
+  }, 0);
 
   return {
     subtitle,

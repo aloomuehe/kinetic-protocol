@@ -79,10 +79,13 @@ export function computeWeeklyMetrics(
   const perDayFocusHours: DayFocusMetric[] = weekDatesISO.map((dISO) => {
     const dayBlocks = getSchedulesForDate(schedules, dISO);
     const planned = dayBlocks.reduce((acc, b) => acc + (Number(b.plannedMinutes) || 0), 0);
-    const actual = dayBlocks.reduce(
-      (acc, b) => acc + (Number(b.actualMinutes) || (b.completed ? Number(b.plannedMinutes) || 0 : 0)),
-      0
-    );
+    // In multi-day aggregation, exclude ambiguous recurring execution data when dISO !== b.date
+    // to prevent scalar completion fields from multiplying across all matching days.
+    const actual = dayBlocks.reduce((acc, b) => {
+      const isVerified = !b.recurrence || b.recurrence === 'none' || b.date === dISO;
+      if (!isVerified) return acc;
+      return acc + (Number(b.actualMinutes) || (b.completed ? Number(b.plannedMinutes) || 0 : 0));
+    }, 0);
     totalPlannedMins += planned;
     totalActualMins += actual;
 
@@ -105,9 +108,18 @@ export function computeWeeklyMetrics(
     };
   });
 
-  const completedTasksCount = tasks.filter((t) => t.status === 'completed').length;
+  const weekStart = weekDatesISO[0];
+  const weekEnd = weekDatesISO[weekDatesISO.length - 1];
+  // A task is relevant to the selected week if and only if its dueDate falls within [weekStart, weekEnd].
+  // Floating tasks without a dueDate belong to the general backlog and do not distort weekly scheduled completion.
+  // Unrelated past and future tasks outside this week are strictly excluded.
+  const relevantTasks = tasks.filter((t) => {
+    if (!t.dueDate) return false;
+    return t.dueDate >= weekStart && t.dueDate <= weekEnd;
+  });
+  const completedTasksCount = relevantTasks.filter((t) => t.status === 'completed').length;
   const taskCompletionPct =
-    tasks.length > 0 ? Math.round((completedTasksCount / tasks.length) * 100) : 0;
+    relevantTasks.length > 0 ? Math.round((completedTasksCount / relevantTasks.length) * 100) : 0;
 
   const avgGoalPct =
     goals.length > 0
@@ -134,7 +146,7 @@ export function computeWeeklyMetrics(
     totalActualMins,
     perDayFocusHours,
     completedTasksCount,
-    totalTasksCount: tasks.length,
+    totalTasksCount: relevantTasks.length,
     taskCompletionPct,
     avgGoalPct,
     totalGoalsCount: goals.length,
@@ -142,4 +154,16 @@ export function computeWeeklyMetrics(
     totalSchedulesCount: todaySchedules.length,
     planCompletionPct
   };
+}
+
+export function computeProtocolConsistency(
+  activeHabits: Habit[] = [],
+  habitStatsById: Record<string, HabitStats> = {}
+): number {
+  if (activeHabits.length === 0) return 0;
+  const total = activeHabits.reduce(
+    (acc, h) => acc + (habitStatsById[h.id]?.completionRate || 0),
+    0
+  );
+  return Math.round(total / activeHabits.length);
 }

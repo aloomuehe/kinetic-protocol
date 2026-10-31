@@ -37,28 +37,31 @@ export function computeHabitStats(
     return latest;
   }, todayISO);
 
-  const rawStartISO =
-    habit.startDate && habit.startDate <= todayISO ? habit.startDate : addDaysISO(todayISO, -60);
+  const rawStartISO = habit.startDate || addDaysISO(todayISO, -60);
   const startISO = earliestEntryISO < rawStartISO ? earliestEntryISO : rawStartISO;
-  const endScanISO = latestSatisfiedISO > todayISO ? latestSatisfiedISO : todayISO;
+  // Historical streak and completion metrics evaluate strictly up to today to prevent
+  // future check-ins from distorting historical protocol statistics.
+  const endScanISO = todayISO;
 
   let currentStreak = 0;
-  let cursor = endScanISO;
+  // Calculate current active streak ending today.
+  // If today is not yet satisfied, evaluate from yesterday to preserve yesterday's active streak.
+  const todayEntry = entriesForHabit[todayISO];
+  const todaySatisfied = isEntrySatisfied(habit, todayEntry);
+
+  let cursor = todaySatisfied ? todayISO : addDaysISO(todayISO, -1);
+
   for (let i = 0; i < 366; i++) {
     if (cursor < startISO) break;
     const entry = entriesForHabit[cursor];
     const satisfied = isEntrySatisfied(habit, entry);
 
     if (satisfied) {
-      // Every satisfied day (scheduled or bonus/weekend check-in) increments the live streak immediately
       currentStreak += 1;
-    } else if (cursor > todayISO) {
-      // Unchecked future day in the current week matrix does not break the streak
-    } else if (cursor === todayISO && currentStreak === 0) {
-      // Today is still in progress if unchecked; preserve yesterday's active streak
     } else if (!isHabitScheduledOnDate(habit, cursor)) {
       // Unscheduled rest day does not break the streak
     } else {
+      // Missed scheduled day breaks the streak
       break;
     }
     cursor = addDaysISO(cursor, -1);
@@ -75,22 +78,35 @@ export function computeHabitStats(
     const scheduled = isHabitScheduledOnDate(habit, scanCursor);
     const entry = entriesForHabit[scanCursor];
     const satisfied = isEntrySatisfied(habit, entry);
-    if (scheduled && scanCursor <= todayISO) {
-      scheduledDaysCount += 1;
-      if (satisfied) {
-        completedScheduledCount += 1;
-        running += 1;
-        if (running > longestStreak) longestStreak = running;
-      } else if (scanCursor !== todayISO) {
-        running = 0;
+
+    if (scheduled) {
+      if (scanCursor < todayISO) {
+        scheduledDaysCount += 1;
+        if (satisfied) {
+          completedScheduledCount += 1;
+          running += 1;
+          if (running > longestStreak) longestStreak = running;
+        } else {
+          running = 0;
+        }
+      } else {
+        // scanCursor === todayISO
+        if (satisfied) {
+          scheduledDaysCount += 1;
+          completedScheduledCount += 1;
+          running += 1;
+          if (running > longestStreak) longestStreak = running;
+        }
+        // If today is still pending, do not penalize scheduledDaysCount or reset running streak
       }
     } else if (satisfied) {
-      // Bonus or current-week completion also counts toward streak and completion credit
+      // Unscheduled bonus check-in completed
       completedScheduledCount += 1;
       scheduledDaysCount += 1;
       running += 1;
       if (running > longestStreak) longestStreak = running;
     }
+
     scanCursor = addDaysISO(scanCursor, 1);
   }
 

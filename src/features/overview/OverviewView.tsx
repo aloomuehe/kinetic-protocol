@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import type { KineticStore, Habit, HabitStats, ScheduleBlock, Task, ActiveNavId } from '../../store/types';
 import type { WeeklyMetrics } from '../../store/selectors';
+import { computeProtocolConsistency } from '../../store/selectors';
 import { CATEGORIES } from '../../store/constants';
 import { formatReadableDate } from '../../utils/dates';
 import { formatDurationMinutes } from '../../utils/formatting';
@@ -206,15 +207,7 @@ export function OverviewView({
             <Flame className="h-4 w-4 text-emerald-400" />
           </div>
           {(() => {
-            const avgConsistency =
-              activeHabits.length > 0
-                ? Math.round(
-                    activeHabits.reduce(
-                      (acc, h) => acc + (habitStatsById[h.id]?.completionRate || 0),
-                      0
-                    ) / activeHabits.length
-                  )
-                : 0;
+            const avgConsistency = computeProtocolConsistency(activeHabits, habitStatsById);
             const litBars = Math.round((avgConsistency / 100) * 20);
             return (
               <>
